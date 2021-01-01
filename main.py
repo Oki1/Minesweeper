@@ -1,171 +1,103 @@
-from pyautogui import screenshot,moveTo,click
-from PIL import Image
-from os import listdir
+from pyautogui import screenshot as pyautogui_ss
+from pyautogui import moveTo
+from pyautogui import click as mouseClick
+from PIL import Image, ImageChops
+import win32gui
+from time import sleep
+from pathlib import Path
 
-from random import randint
-random = randint
-def detectFiles():
-    # 175% in google!!!!!!!!
-    data = {}
-    # window crop size- custom for sizes of match
-    windowcrop = (405, 267, 1455, 827)
-    # size of square in pixels
-    tilesize = 35
-    # tile width and height
-    size = (16, 30)
+class Screen:
+    #gameSize[(x,y) tuple]
+    #tileSize[integer]
+    #tiles[{index: Image} dict]
+    #coords[(
+    #verbosemap[{index: stringtoprint} dict]
+    def __init__(self, gameSize, tileSize):
+        self.gameSize = gameSize
+        self.tileSize = tileSize
+        self.tiles = {}
+        self.verboseMap = {}
+        self.matrix = []
+        self.coords = ()
 
-    def getstatus(prnt=False):
-        def getdata():
-            for filename in listdir('C:\\Users\\castor\\Documents\\GitHub\\Minesweeper-bot\\tiles'):
-                im = Image.open("tiles/" + filename)
-                data[str(list(im.getdata()))] = [filename[:-4]]
-                im.close()
+        self.__windowRect()
+        self.__load()
+        # f = 0
+        # for x in self.__slice(self.gameSize, self.tileSize):
+        #     f+=1
+        #     x.save(str(f)+".png")
 
-        def getScreeshot():  # left up right low
-            return (screenshot().crop(windowcrop))
+    # finds the minesweeper window and gets the coordinates
+    def __windowRect(self, name="Minesweeper", cut=(19, 127, -14, -13)):
+        def winEnumHandler(hwnd, ctx):
+            if win32gui.IsWindowVisible(hwnd):
+                if (win32gui.GetWindowText(hwnd) == name):
+                    global coords
+                    coords = win32gui.GetWindowRect(hwnd)
+                    coords = tuple(coords[x] + cut[x] for x in range(4))
+                    self.coords = coords
+        win32gui.EnumWindows(winEnumHandler, None)
 
-        def slice(tilesize, tilenum, screenshot):
-            ret = []
-            for x in range(tilenum[0]):
-                for y in range(tilenum[1]):
-                    ret.append(screenshot.crop((tilesize * y, tilesize * x, tilesize * (y + 1), tilesize * (x + 1))))
-            return ret
+    #returns a screenshot of the screen
+    def __screenshot(self, sleeptime=0):
 
+        sleep(sleeptime)
+        return(pyautogui_ss().crop(box=self.coords))
 
-        screen = getScreeshot()
-        stuff = slice(tilesize, size, screen)
-        getdata()
+    #generator that yields slices of the screen
+    def __slice(self, gameSize, tileSize):
+        im = self.__screenshot()
+        for x in range(gameSize[1]):
+            for y in range(gameSize[0]):
+                yield im.crop((tileSize * y, tileSize * x, tileSize * (y + 1), tileSize * (x + 1)))
 
-        fixed = []
-        currentfield = []
-        x = 0
-        for y in range(size[0]):
-            currentfield.append([])
-            for tile in range(size[1]):
-                try:
-                    currentfield[y].append(data[str(list(stuff[x].getdata()))])
-                except KeyError:
-                    return None
-                x += 1
+    #loads tile images into memory
+    def __load(self, tilenum=13, path = "\\tiles\\"):
+        path = str(Path(__file__).parent) + path
+        for x in range(tilenum):
+            with Image.open(path + str(x) + ".png") as im:
+                self.tiles[str(x)] = im.convert("RGB")
+        self.verboseMap = dict(zip(range(tilenum), range(tilenum)))
+        self.verboseMap[12] = "f"
+        self.verboseMap[9] = "x"
+        self.verboseMap[10] = "m"
+        self.verboseMap[11] = "k"
 
-        def printfield():
-            for x in currentfield:
-                for y in x:
-                    try:
-                        print(int(y[0]), end=" ")
-                    except ValueError:
-                        print(y[0][0].upper(), end=" ")
-                print("\n")
+    #detect cell type from image
+    def __detect(self, cell, cutoff=50):
+        cell = cell.convert("RGB")
 
-        for x in range(len(currentfield)):
-            fixed.append([])
-            for y in currentfield[x]:
-                try:
-                    fixed[x].append(int(y[0]))
-                except ValueError:
-                    fixed[x].append(y[0][0].upper())
-        if prnt:
-            printfield()
+        for tilei in self.tiles:
+            found = True
+            difference = ImageChops.difference(cell, self.tiles[tilei])
+            for x in set(difference.getdata()):
+                if((x[0] + x[1] + x[2]) > 3*cutoff):
+                    found = False
+            if(found):
+                return tilei
+    #generates 2d matrix corresponding to the minesweeper field
+    def genMatrix(self, verbose = False):
+        self.matrix = []
+        gen = self.__slice(self.gameSize, self.tileSize)
+        for y in range(self.gameSize[1]):
+            self.matrix.append([])
+            for x in range(self.gameSize[0]):
+                self.matrix[y].append( self.__detect(next(gen)))
+        if(verbose):
+            for y in self.matrix:
+                for x in y:
+                    print(self.verboseMap[int(x)], end=" ")
+                print("")
+            print("\n\n\n")
+    def press(self, y, x):
+        y-=1
+        x-=1
+        xpos = self.coords[0] + self.tileSize//2 + x*self.tileSize
+        ypos = self.coords[1]+ self.tileSize//2 + y*self.tileSize
+        print(xpos, ypos)
+        moveTo(xpos, ypos, 0)
+        mouseClick()
+if __name__ == "__main__":
+    screen = Screen((9,9), 20)
+    screen.press(5,8)
 
-        return (fixed)
-
-    def press(y,x):
-        xpos = (405+tilesize/2)+(x*tilesize)
-        ypos = (267+tilesize/2)+(y*tilesize)
-        moveTo(xpos,ypos,0)
-        click()
-
-    def getClose(line, tile, stuff):
-        close = []
-
-
-        #zgoraj
-        if (line > 0):
-            close.append([line-1,tile])    #srednja
-            if(tile > 0):    #levo
-                close.append([line-1,tile-1])
-            if(tile < len(stuff[0])-1):     #desno
-                close.append([line-1,tile+1])
-        #srednja
-        if(True):
-            if(tile > 0):       #levo
-                close.append([line,tile-1])
-            if(tile < len(stuff[0])-1):     #desno
-                close.append([line,tile+1])
-        #spodaj
-        if(line != len(stuff)-1):
-            close.append([line+1,tile])    #srednja
-            if(tile > 0):    #levo
-                close.append([line+1,tile-1])
-            if(tile < len(stuff[0])-1):     #desno
-                close.append([line+1,tile+1])
-
-
-        return(close)
-
-    def makeMatrix(stuff):
-        #make empty
-        mtrx = []
-        numbers = []
-
-        for x in range(len(stuff)):
-            mtrx.append([])
-            for y in range(len(stuff[x])):
-                if(str(stuff[x][y]) in "87654321"):    #NUMBER  9
-                    mtrx[x].append(9)
-                    ln = len(numbers)
-                    numbers.append([])
-                    numbers[ln].append(stuff[x][y])
-                    numbers[ln].append(x)
-                    numbers[ln].append(y)
-                elif(stuff[x][y] is 0):      #EMPTY    9
-                    mtrx[x].append(9)
-                elif(stuff[x][y] is 9):     #unknown   0
-                    mtrx[x].append(0)
-
-        for number in numbers:
-            close = getClose(*number[1:],stuff)
-            for tile in close:
-                if(mtrx[tile[0]][tile[1]] != 9):
-                    mtrx[tile[0]][tile[1]] = number[0]
-
-        return mtrx
-
-    def getsmallest(matrix):
-        sm = 8
-        ret = []
-        for x in range(len(matrix)):
-            for y in range(len(matrix[x])):
-                if(matrix[x][y] != 0 and matrix[x][y] < sm):
-                    sm = matrix[x][y]
-        for x in range(len(matrix)):
-            for y in range(len(matrix[x])):
-                if(matrix[x][y] == sm):
-                    ret.append([x,y])
-        print(sm)
-        return(ret)
-
-    status = getstatus(prnt = False)
-    if(status != None):
-        for x in status:
-            if("M" in x):
-                click(933,210)
-                status = getstatus()
-
-        mtrx = makeMatrix(status)
-        for x in mtrx:
-            print()
-            for y in x :
-                print(y,end=" ")
-        smallest = getsmallest(mtrx)
-        if(smallest == []):
-            press(8,15)
-        else:
-            x = random(0,len(smallest)-1)
-            press(*smallest[x])
-    else:
-        print("wrong screenshot, restart")
-
-
-for x in range(50):
-    detectFiles()
