@@ -27,6 +27,7 @@ class Screen:
         #     f+=1
         #     x.save(str(f)+".png")
 
+
     # finds the minesweeper window and gets the coordinates
     def __windowRect(self, name="Minesweeper", cut=(19, 127, -14, -13)):
         def winEnumHandler(hwnd, ctx):
@@ -36,6 +37,7 @@ class Screen:
                     coords = win32gui.GetWindowRect(hwnd)
                     coords = tuple(coords[x] + cut[x] for x in range(4))
                     self.coords = coords
+                    win32gui.SetForegroundWindow(hwnd)
         win32gui.EnumWindows(winEnumHandler, None)
 
     #returns a screenshot of the screen
@@ -82,13 +84,14 @@ class Screen:
         for y in range(self.gameSize[1]):
             self.matrix.append([])
             for x in range(self.gameSize[0]):
-                self.matrix[y].append( self.__detect(next(gen)))
+                self.matrix[y].append(int(self.__detect(next(gen))))
         if(verbose):
             for y in self.matrix:
                 for x in y:
                     print(self.verboseMap[int(x)], end=" ")
                 print("")
             print("\n\n\n")
+    #obvious
     def press(self, y, x):
         y-=1
         x-=1
@@ -97,7 +100,22 @@ class Screen:
         print(xpos, ypos)
         moveTo(xpos, ypos, 0)
         mouseClick()
+
+    #compute the chances for a mine to be at a position in the matrix
+    def chanceCompute(self, verbose=False):
+        self.chances = [[0]*self.gameSize[0] for x in range(self.gameSize[1])]
+        for y in range(self.gameSize[1]):
+            for x in range(self.gameSize[0]):
+                if(self.matrix[y][x] != 0):
+                    self.chances[y][x] = "x"
+        if(verbose):
+            for y in self.chances:
+                for x in y:
+                    print(x, end=" ")
+                print("")
+            print("\n\n\n")
+
 if __name__ == "__main__":
     screen = Screen((9,9), 20)
-    screen.press(5,8)
-
+    screen.genMatrix()
+    screen.chanceCompute(verbose=True)
